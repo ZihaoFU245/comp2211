@@ -394,16 +394,196 @@ def get_accuracy(prediction, ground_truth):
 
     return accuracy
 
+# Below is K MEANS
+
+
+def initialize_centroids(abundance_matrix, num_clusters, random_seed=100):
+    """
+    Initializes centroids for clustering.
+
+    You may consider using np.random.choice. https://numpy.org/doc/stable/reference/random/generated/numpy.random.choice.html
+    Carefully specify input into np.random.choice so that the returned array will NOT have 2 identical rows.
+    You will obtain 0 points for this task if your code generates 2 identical rows.    
+
+    Parameters:
+    abundance_matrix: A 2D numpy array of shape (num_cells, num_proteins) representing protein abundance in cells.
+    num_clusters: An integer representing the number of clusters.
+    random_seed: An integer representing the random seed to ensure reproducibility.
+
+    Returns:
+    centroids: A 2D numpy array of shape (num_clusters, num_proteins) representing the initialized centroids.
+    """    
+    np.random.seed(random_seed)
+
+    row_indices = np.random.choice(abundance_matrix.shape[0] , size=num_clusters , replace=False)
+    centroids = abundance_matrix[row_indices]
+
+    return centroids
+
+def compute_centroids(abundance_matrix, labels):
+    """
+    Computes the centroids of clusters based on assigned labels.
+
+    You may consider using np.arange https://numpy.org/doc/stable/reference/generated/numpy.arange.html
+    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+    You may consider using np.matmul https://numpy.org/doc/stable/reference/generated/numpy.matmul.html
+
+    Parameters:
+    abundance_matrix: A 2D numpy array of shape (num_cells, num_proteins) representing protein abundance in cells.
+    labels: An 1D numpy array of shape (num_cells,) indicating the cluster assigned to each cell.
+
+    Returns:
+    centroids: A 2D numpy array of shape (num_clusters, num_proteins) representing the new centroids of each cluster.
+    """
+    
+    X_3D = abundance_matrix[: , None , :]   #(n_cells , 1 , n_proteins)
+
+    max_ = np.max(labels)
+    One_Hot_Encoded = np.eye(max_ + 1)[labels]  #(n_cells , n_classes)
+    Encoded_3D = One_Hot_Encoded[: , : , None]  #(n_cells , n_classes , 1)
+
+    preprocessed = X_3D * Encoded_3D    #(n_cells , n_classes , n_proteins)
+
+    # FIND MEAN
+    new_centroids = np.mean(preprocessed , axis=0)
+
+    return new_centroids
+
+def cluster_max_frequency(labels):
+    """
+    Determines which cluster has the highest number of assigned cells for potential splitting.
+
+    You may consider using np.arange https://numpy.org/doc/stable/reference/generated/numpy.arange.html
+    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+    You may consider using np.max https://numpy.org/doc/stable/reference/generated/numpy.max.html
+    You may consider using np.argmax https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
+    Alternatively, you may consider using np.bincount https://numpy.org/doc/stable/reference/generated/numpy.bincount.html
+    and np.argmax https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
+
+    Parameters:
+    labels: An numpy 1D array of shape (num_cells,) indicating the cluster assigned to each cell.
+
+    Returns:
+    cluster_to_be_split: An integer representing the index of the cluster that has the maximum frequency of assigned cells.
+    """
+    One_Hot_Encoded = np.eye(np.max(labels) + 1)[labels]
+    freq = np.sum(One_Hot_Encoded , axis=0)
+
+    return np.argmax(freq)
+
+def cluster_max_inertia(abundance_matrix, centroids, labels):
+    """
+    Determines which cluster has the highest inertia for potential splitting.
+
+    You may consider using np.arange https://numpy.org/doc/stable/reference/generated/numpy.arange.html
+    You may consider using np.expand_dims https://numpy.org/doc/stable/reference/generated/numpy.expand_dims.html
+    You may consider using np.sum https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+    You may consider using np.max https://numpy.org/doc/stable/reference/generated/numpy.max.html
+    You may consider using np.argmax https://numpy.org/doc/stable/reference/generated/numpy.argmax.html
+
+    Parameters:
+    abundance_matrix: A numpy 2D array of shape (num_cells, num_proteins) representing protein abundance in cells.
+    centroids: A numpy 2D array of shape (num_centroids, num_proteins) representing protein abundance in centroids.
+    labels: A numpy 1D array of shape (num_cells,) indicating the cluster assigned to each cell.
+
+    Returns:
+    cluster_to_be_split: An integer representing the index of the cluster that will be further split based on inertia.
+    """
+    X_3D = abundance_matrix[: , None , :]   #(n_cells , 1 , n_proteins)
+
+    max_ = np.max(labels)
+    One_Hot_Encoded = np.eye(max_ + 1)[labels]  #(n_cells , n_classes)
+    Encoded_3D = One_Hot_Encoded[: , : , None]  #(n_cells , n_classes , 1)
+
+    preprocessed = X_3D * Encoded_3D    #(n_cells , n_classes , n_proteins)
+    preprocessed = np.where(preprocessed == 0 , np.nan , preprocessed)
+
+    # TODO:calculate squared distance
+    # centroids shape (n_classes , n_proteins)
+
+    CENTROIDS = centroids[None , : , :]     # (1 , n_classes , n_proteins)
+    dist = np.nansum((preprocessed - CENTROIDS) ** 2 , axis=2)     # (n_cells , n_classes) distance between points to center
+    dist_all = np.nansum(dist , axis=0)    # (n_classes)
+
+    return np.argmax(dist_all)
+
+def k_means_split(abundance_matrix, initial_k=2, max_iterations=50, frequency=False):
+    """
+    Performs k-means clustering and splits the most appropriate cluster.
+
+    Parameters:
+    abundance_matrix: A numpy 2D array of shape (num_cells, num_proteins) representing protein abundance in cells.
+    initial_k: An integer representing the initial number of clusters to be initialized.
+    max_iterations: An integer representing the maximum number of iterations for the k-means algorithm.
+    frequency: A boolean, if True, selects the cluster to be split based on frequency; otherwise, uses inertia.
+
+    Returns:
+    centroids: A 2D numpy array of shape (num_clusters, num_proteins) representing the new centroids of each cluster.
+    labels: An 1D numpy array of shape (num_cells,) indicating the cluster assigned to each cell.
+    """
+
+    centroids = initialize_centroids(abundance_matrix, initial_k)
+    labels = np.zeros(abundance_matrix.shape[0], dtype=int)
+
+    for i in range(max_iterations):
+        distances = calculate_euclidean_distance(abundance_matrix, centroids)   # (n_centroids , n_cells)
+        labels = np.argmin(distances, axis=0)
+        centroids = compute_centroids(abundance_matrix, labels)
+        next_distances = calculate_euclidean_distance(abundance_matrix, centroids)
+        next_label = np.argmin(next_distances, axis=0)
+        if np.all(next_label == labels):
+            break
+
+
+    if frequency:
+        cluster_to_be_split = cluster_max_frequency(labels)
+    else:
+        cluster_to_be_split = cluster_max_inertia(abundance_matrix, centroids, labels)
+    
+    split_cluster_data = abundance_matrix[labels == cluster_to_be_split]    
+
+    # DEBUG
+    print(labels)
+    print(centroids)
+    print(cluster_to_be_split)
+    print(split_cluster_data)
+    # DEBUG
+
+
+    new_centroids = initialize_centroids(split_cluster_data, 2)
+
+    centroids = np.delete(centroids, cluster_to_be_split, axis=0)
+    changed_label_mask = (labels == cluster_to_be_split)
+    labels = np.where(labels > cluster_to_be_split, labels - 1, labels)
+    
+    for j in range(max_iterations):
+        new_distances = calculate_euclidean_distance(split_cluster_data, new_centroids)
+        new_labels = np.argmin(new_distances, axis=0)
+        new_centroids = compute_centroids(split_cluster_data, new_labels)
+        new_next_distances = calculate_euclidean_distance(split_cluster_data, new_centroids)
+        new_next_label = np.argmin(new_next_distances, axis=0)
+        if np.all(new_next_label == new_labels):
+            break
+    
+    centroids = np.vstack((centroids, new_centroids))  
+    max_ = np.max(labels)
+    labels[changed_label_mask] = new_labels + max_ + 1
+    
+    return centroids, labels
 
 if __name__ == "__main__":
 
-    example_prediction = np.array([1, 2, 1, 2])
-    example_truth = np.array([1, 1, 1, 1])
-    result = get_accuracy(prediction=example_prediction, ground_truth=example_truth)
-    print(result)
-    # You are expected to get 0.5
+    example_array = np.array([[0, 0], [2, 2], [10, 10], [100, 100]])
+    result_centroids, result_labels = k_means_split(abundance_matrix=example_array )
+    print(result_centroids)
+    # You are expected to get [[100,100],[1,1],[10,10]]
+    print(result_labels)
+    # You are expected to get [1,1,2,0]
 
-    exit()
+
+    exit()  
 
 
     train_feature = pd.read_csv("train_features.csv", index_col=0)
@@ -419,5 +599,11 @@ if __name__ == "__main__":
     train_label = label_to_integer(label=train_label)
 
     #visualize_processed_datasets(processed_train_feature, train_label)
+
+    new_centroids, labels = k_means_split(processed_train_feature)
+    print(labels)
+    # You are expected to get [2 2 2 1 2 2 2 2 2 2 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1
+    # 1 1 1 1 1 1 1 2 2 1 1 1 1 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 0 0 0 0 0 0
+    # 0 0 0 0 0 0 0 0 0 0 2 2 0 0 0 0 0 0 0 0 0]
 
 
