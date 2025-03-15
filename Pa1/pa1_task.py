@@ -1,7 +1,7 @@
-import pandas as pd
+#import pandas as pd
 import numpy as np
 from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 def calculate_rank(abundance_matrix):
     """
@@ -33,7 +33,7 @@ def calculate_mean(abundance_matrix):
     mean = np.mean(sorted_ , axis=0)
     return mean
 
-def substitute_mean(abundance_matrix, mean_values, rank_matrix):
+def substitute_mean(abundance_matrix, mean_values, rank_matrix):    # Fail
     """
     Substitute each value in the abundance matrix with the corresponding mean value based on ranks.
 
@@ -48,8 +48,7 @@ def substitute_mean(abundance_matrix, mean_values, rank_matrix):
     A 2D numpy array of shape (num_cells, num_proteins) where each value has been
     substituted by the corresponding mean value based on the rank.
     """
-    substituded = np.empty_like(abundance_matrix)
-    substituded[np.arange(abundance_matrix.shape[0])[: , np.newaxis] , rank_matrix] = mean_values
+    substituded = mean_values[rank_matrix]
     return substituded
 
 def quantile_normalization(abundance_matrix):
@@ -165,9 +164,8 @@ def PCA_and_visualization(abundance_matrix, label):
 
 def visualize_processed_datasets(X, label):
     x, y, colors, _ = PCA_and_visualization(X, label)
-    plt.scatter(x=x, y=y, c=colors)
-    plt.show()
-
+    #plt.scatter(x=x, y=y, c=colors)
+    #plt.show()
 
 def calculate_manhattan_distance(feature_train, feature_test):
     """
@@ -437,18 +435,17 @@ def compute_centroids(abundance_matrix, labels):
     centroids: A 2D numpy array of shape (num_clusters, num_proteins) representing the new centroids of each cluster.
     """
     
-    X_3D = abundance_matrix[: , None , :]   #(n_cells , 1 , n_proteins)
+    max_label = np.max(labels)
+    sums = np.zeros((max_label + 1, abundance_matrix.shape[1]), dtype=abundance_matrix.dtype)
+    counts = np.zeros(max_label + 1, dtype=int)
+    
+    for i in range(abundance_matrix.shape[0]):
+        sums[labels[i]] += abundance_matrix[i]
+        counts[labels[i]] += 1
 
-    max_ = np.max(labels)
-    One_Hot_Encoded = np.eye(max_ + 1)[labels]  #(n_cells , n_classes)
-    Encoded_3D = One_Hot_Encoded[: , : , None]  #(n_cells , n_classes , 1)
-
-    preprocessed = X_3D * Encoded_3D    #(n_cells , n_classes , n_proteins)
-
-    # FIND MEAN
-    new_centroids = np.mean(preprocessed , axis=0)
-
+    new_centroids = sums / counts[:, None]
     return new_centroids
+
 
 def cluster_max_frequency(labels):
     """
@@ -509,7 +506,7 @@ def cluster_max_inertia(abundance_matrix, centroids, labels):
 
     return np.argmax(dist_all)
 
-def k_means_split(abundance_matrix, initial_k=2, max_iterations=50, frequency=False):
+def k_means_split(abundance_matrix, initial_k=2, max_iterations=50, frequency=False):   # Fail
     """
     Performs k-means clustering and splits the most appropriate cluster.
 
@@ -536,28 +533,18 @@ def k_means_split(abundance_matrix, initial_k=2, max_iterations=50, frequency=Fa
         if np.all(next_label == labels):
             break
 
-
     if frequency:
         cluster_to_be_split = cluster_max_frequency(labels)
     else:
         cluster_to_be_split = cluster_max_inertia(abundance_matrix, centroids, labels)
-    
+
     split_cluster_data = abundance_matrix[labels == cluster_to_be_split]    
-
-    # DEBUG
-    print(labels)
-    print(centroids)
-    print(cluster_to_be_split)
-    print(split_cluster_data)
-    # DEBUG
-
 
     new_centroids = initialize_centroids(split_cluster_data, 2)
 
     centroids = np.delete(centroids, cluster_to_be_split, axis=0)
-    changed_label_mask = (labels == cluster_to_be_split)
-    labels = np.where(labels > cluster_to_be_split, labels - 1, labels)
-    
+
+
     for j in range(max_iterations):
         new_distances = calculate_euclidean_distance(split_cluster_data, new_centroids)
         new_labels = np.argmin(new_distances, axis=0)
@@ -568,24 +555,15 @@ def k_means_split(abundance_matrix, initial_k=2, max_iterations=50, frequency=Fa
             break
     
     centroids = np.vstack((centroids, new_centroids))  
-    max_ = np.max(labels)
-    labels[changed_label_mask] = new_labels + max_ + 1
-    
+
+    # Reasign the labels
+    dist = calculate_euclidean_distance(abundance_matrix , centroids)
+    labels = np.argmin(dist , axis=0)
+
     return centroids, labels
 
 if __name__ == "__main__":
-
-    example_array = np.array([[0, 0], [2, 2], [10, 10], [100, 100]])
-    result_centroids, result_labels = k_means_split(abundance_matrix=example_array )
-    print(result_centroids)
-    # You are expected to get [[100,100],[1,1],[10,10]]
-    print(result_labels)
-    # You are expected to get [1,1,2,0]
-
-
-    exit()  
-
-
+    import pandas as pd
     train_feature = pd.read_csv("train_features.csv", index_col=0)
     train_label = pd.read_csv("train_labels.csv", index_col=0)
     test_feature = pd.read_csv("test_features.csv", index_col=0)
@@ -595,15 +573,12 @@ if __name__ == "__main__":
     train_label = train_label.flatten()
 
     processed_train_feature = preprocess_datasets(abundance_matrix=train_feature)
-    processed_test_feature = preprocess_datasets(abundance_matrix=test_feature)
-    train_label = label_to_integer(label=train_label)
 
-    #visualize_processed_datasets(processed_train_feature, train_label)
+    result , a = k_means_split(processed_train_feature)
+    print(result)
+    print(a)
 
-    new_centroids, labels = k_means_split(processed_train_feature)
-    print(labels)
     # You are expected to get [2 2 2 1 2 2 2 2 2 2 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1
     # 1 1 1 1 1 1 1 2 2 1 1 1 1 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 0 0 0 0 0 0
     # 0 0 0 0 0 0 0 0 0 0 2 2 0 0 0 0 0 0 0 0 0]
-
-
+    
