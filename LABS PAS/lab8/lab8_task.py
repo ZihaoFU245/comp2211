@@ -263,7 +263,8 @@ def Data_augmentation(img):
 
     if gb_rate > 0.5:
         # TODO 1: your code starts here, Hint: gb stands for Gaussian blur
-        img = transforms.transforms.GaussianBlur(kernel_size=3)(img)
+        kernel_s = [3 , 3]
+        img = torchvision.transforms.functional.gaussian_blur(img , kernel_s)
 
     if hf_rate > 0.5:
         # TODO 2: your code starts here, Hint: hf stands for horizontal flip
@@ -336,25 +337,39 @@ class Network(nn.Module):
     def __init__(self):
         super(Network, self).__init__()
 
-        self.conv1 = nn.Conv2d(3 , 32 , 3)
-        self.pool1 = nn.MaxPool2d(2 , 2)
-        self.conv2 = nn.Conv2d(32 , 64 , 3)
-        self.pool2 = nn.MaxPool2d(2, 2)
-        self.flatten = nn.Flatten()
-        self.Dense1 = nn.Linear(64 * 14 * 14 , 128)
-        self.DropOut1 = nn.Dropout(0.2)
-        self.Dense2 = nn.Linear(128 , 64)
-        self.Output = nn.Linear(64 , 10)
-    
-    def forward(self, x):
-        x = self.pool1(F.relu(self.conv1(x)))
-        x = self.pool2(F.relu(self.conv2(x)))
-        x = self.flatten(x)
-        x = F.relu(self.Dense1(x))
-        x = self.DropOut1(x)
-        x = F.relu(self.Dense2(x))
-        x = self.Output(x)
+        def conv_block(in_channels, out_channels, stride):
+            return nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True)
+            )
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1, bias=False)  # Output: 32 x H x W
+        self.bn1 = nn.BatchNorm2d(32)
+        self.relu = nn.ReLU(inplace=True)
+        self.block1 = conv_block(32, 64, stride=2)    # Output: 64 x H/2 x W/2
+        self.block2 = conv_block(64, 128, stride=2)   # Output: 128 x H/4 x W/4
+        self.block3 = conv_block(128, 256, stride=2)  # Output: 256 x H/8 x W/8
+        self.block4 = conv_block(256, 512, stride=2)  # Output: 512 x H/16 x W/16
 
+        self.dropout = nn.Dropout(0.4)
+        self.adaptpool = nn.AdaptiveAvgPool2d((1, 1))  # Global avg pooling
+
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(512, 10)
+        )
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.dropout(x)
+        x = self.adaptpool(x)
+        x = self.classifier(x)
         return x
 
 
@@ -436,7 +451,7 @@ def train_one_epoch():
         output.backward()
 
         optimizer.step()
-
+        
         avg_train_loss += output.item()
 
     # TODO 3: your code ends here
