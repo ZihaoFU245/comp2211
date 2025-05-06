@@ -402,7 +402,9 @@ if __name__ == "__main__":
                 "./pa2_dataset/Video3.MOV",
                 "./pa2_dataset/Video7.MOV",
                 "./pa2_dataset/Video2.MOV",
-                "./pa2_dataset/Video4.MOV"
+                "./pa2_dataset/Video4.MOV",
+                "./pa2_dataset/Video8.mp4",
+                "./pa2_dataset/Video9.mp4",
                 ]
     x , y = format_dataset(filenames)
 
